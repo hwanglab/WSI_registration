@@ -7,12 +7,19 @@ fixed_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/i
 moving_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png'
 reg_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/reg1.png'
 
-fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
-movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+# fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
+# movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
 
-# resultImage=sitk.Elastix(fixedImage, movingImage, 'nonrigid')
-# reg_img = sitk.Cast(sitk.RescaleIntensity(resultImage), sitk.sitkUInt8)
-# sitk.WriteImage(reg_img, reg_path)
+fixedImage = cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE)
+fixedImage = fixedImage.astype(np.float32)
+fixedImage =sitk.GetImageFromArray(fixedImage)
+
+
+# movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+movingImage = cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE)
+movingImage = movingImage.astype(np.float32)
+movingImage =sitk.GetImageFromArray(movingImage)
+
 
 elastixImageFilter = sitk.ElastixImageFilter()
 elastixImageFilter.SetFixedImage(fixedImage)
@@ -57,8 +64,11 @@ elastixImageFilter.SetParameter("FinalGridSpacingInPhysicalUnits", "16")
 
 # elastixImageFilter.SetParameter("HowToCombineTransforms", "Compose")
 sitk.PrintParameterMap(elastixImageFilter.GetParameterMap())
-
 elastixImageFilter.Execute()
+# reg_img = sitk.Cast(sitk.RescaleIntensity(elastixImageFilter.GetResultImage()), sitk.sitkUInt8)
+
+
+
 
 
 transformParameterMap = elastixImageFilter.GetTransformParameterMap()
@@ -66,11 +76,30 @@ transformixImageFilter = sitk.TransformixImageFilter()
 transformixImageFilter.SetTransformParameterMap(transformParameterMap)
 # sitk.PrintParameterMap(transformParameterMap)
 
+
+
+movingColor=cv2.imread(moving_path,cv2.IMREAD_COLOR)
+movingB = sitk.GetImageFromArray(movingColor[:,:,0])
+movingG = sitk.GetImageFromArray(movingColor[:,:,1])
+movingR = sitk.GetImageFromArray(movingColor[:,:,2])
 im2 =sitk.ReadImage('Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png', sitk.sitkFloat32)
-transformixImageFilter.SetMovingImage(im2)
+transformixImageFilter.SetMovingImage(movingB)
 transformixImageFilter.Execute()
-reg_img = sitk.Cast(sitk.RescaleIntensity(transformixImageFilter.GetResultImage()), sitk.sitkUInt8)
+outB = transformixImageFilter.GetResultImage()
+# outB = sitk.Cast(sitk.RescaleIntensity(transformixImageFilter.GetResultImage()), sitk.sitkUInt8)
+# sitk.WriteImage(reg_img, prefix+'regB.jpg')
 
-# reg_img = sitk.Cast(sitk.RescaleIntensity(elastixImageFilter.GetResultImage()), sitk.sitkUInt8)
+transformixImageFilter.SetMovingImage(movingG)
+transformixImageFilter.Execute()
+outG = transformixImageFilter.GetResultImage()
+# outG = sitk.Cast(sitk.RescaleIntensity(transformixImageFilter.GetResultImage()), sitk.sitkUInt8)
+# sitk.WriteImage(outG, prefix+'regB.jpg')
 
-sitk.WriteImage(reg_img, reg_path)
+transformixImageFilter.SetMovingImage(movingR)
+transformixImageFilter.Execute()
+outR = transformixImageFilter.GetResultImage()
+# outR = sitk.Cast(sitk.RescaleIntensity(transformixImageFilter.GetResultImage()), sitk.sitkUInt8)
+# sitk.WriteImage(outR prefix+'regR.jpg')
+
+out = np.dstack([sitk.GetArrayFromImage(outB), sitk.GetArrayFromImage(outG), sitk.GetArrayFromImage(outR)])
+cv2.imwrite(prefix+'out.png', out)
