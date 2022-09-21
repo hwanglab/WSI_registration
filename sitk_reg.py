@@ -3,7 +3,7 @@ import cv2
 import SimpleITK as sitk
 
 prefix = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/'
-fixed_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_CD3/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png'
+fixed_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png'
 moving_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png'
 reg_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/reg1.png'
 
@@ -75,7 +75,8 @@ transformParameterMap = elastixImageFilter.GetTransformParameterMap()
 transformixImageFilter = sitk.TransformixImageFilter()
 transformixImageFilter.SetTransformParameterMap(transformParameterMap)
 # sitk.PrintParameterMap(transformParameterMap)
-
+sitk.WriteParameterFile(transformParameterMap[0], prefix+'tranform.txt')
+transformixImageFilter.LogToConsoleOn()
 
 
 movingColor=cv2.imread(moving_path,cv2.IMREAD_COLOR)
@@ -84,10 +85,49 @@ movingG = sitk.GetImageFromArray(movingColor[:,:,1])
 movingR = sitk.GetImageFromArray(movingColor[:,:,2])
 im2 =sitk.ReadImage('Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png', sitk.sitkFloat32)
 transformixImageFilter.SetMovingImage(movingB)
+transformixImageFilter.ComputeDeformationFieldOn()
 transformixImageFilter.Execute()
+
+deformation_file = prefix+'deformation.nii.gz'
+sitk.WriteImage(transformixImageFilter.GetDeformationField(),deformation_file)
+deformationField = transformixImageFilter.GetDeformationField()
+
+# afine_tx =sitk.AffineTransform(sitk.Cast(deformationField, sitk.sitkVectorFloat64))
+dis_tx=sitk.DisplacementFieldTransform(sitk.Cast(deformationField, sitk.sitkVectorFloat64))
+
+
+# deform_inv1 = np.array(sitk.GetArrayFromImage(sitk.InverseDisplacementField(deformationField, size=deformationField.GetSize(), outputOrigin=(0.0, 0.0), outputSpacing=(1.0, 1.0))))
+
+
+
+
 outB = transformixImageFilter.GetResultImage()
 # outB = sitk.Cast(sitk.RescaleIntensity(transformixImageFilter.GetResultImage()), sitk.sitkUInt8)
 # sitk.WriteImage(reg_img, prefix+'regB.jpg')
+
+
+
+grid_image = sitk.GridSource(outputPixelType=sitk.sitkUInt16,
+                             size=outB.GetSize(), 
+                             sigma=(0.1,0.1), gridSpacing=(16.0,16.0))
+grid_image.CopyInformation(outB)
+deformArray = sitk.GetArrayFromImage(deformationField)
+fixedArray =sitk.GetArrayFromImage(fixedImage)
+movingArray = sitk.GetArrayFromImage(movingImage)
+new_movingArray = sitk.GetArrayFromImage(grid_image) #np.zeros_like(movingArray)
+
+for y in range(deformArray.shape[0]):
+    for x in range(deformArray.shape[1]):
+        nx,ny =  dis_tx.TransformPoint((x,y)) #(x - deformArray[(y,x)][0], y -deformArray[(y,x)][1]) #dis_tx.TransformPoint((x,y))
+        if nx>=0 and nx < new_movingArray.shape[1]  and ny>=0 and ny < new_movingArray.shape[0]:
+            new_i, new_j = int(np.floor(nx)), int(np.floor(ny))
+            new_movingArray[(new_j, new_i)] = fixedArray[(y,x)]
+
+
+cv2.imwrite(prefix+'new_moving.jpg', new_movingArray)
+
+
+
 
 transformixImageFilter.SetMovingImage(movingG)
 transformixImageFilter.Execute()
@@ -103,3 +143,21 @@ outR = transformixImageFilter.GetResultImage()
 
 out = np.dstack([sitk.GetArrayFromImage(outB), sitk.GetArrayFromImage(outG), sitk.GetArrayFromImage(outR)])
 cv2.imwrite(prefix+'out.png', out)
+
+
+# resampler = sitk.ResampleImageFilter()
+# resampler.SetReferenceImage(deformationField)  # Or any target geometry
+# resampler.SetTransform(sitk.DisplacementFieldTransform(
+#     sitk.Cast(deformationField, sitk.sitkVectorFloat64)))
+# warped = resampler.Execute(movingR)
+# cv2.imwrite(prefix+'warped.jpg', sitk.GetArrayFromImage(warped))
+
+grid_image = sitk.GridSource(outputPixelType=sitk.sitkUInt16,
+                             size=movingImage.GetSize(), 
+                             sigma=(0.1,0.1), gridSpacing=(16.0,16.0))
+grid_image.CopyInformation(movingImage)
+
+out_grid=sitk.Resample(grid_image, fixedImage, sitk.DisplacementFieldTransform(
+    sitk.Cast(deformationField, sitk.sitkVectorFloat64)))
+out_grid = sitk.Cast(sitk.RescaleIntensity(out_grid), sitk.sitkUInt8)
+cv2.imwrite(prefix+'out_grid.png', sitk.GetArrayFromImage(out_grid))
