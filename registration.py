@@ -155,8 +155,36 @@ def write_deform_field(deformationField, prefix):
 
 
 if __name__ == '__main__':
-    fixed_path = input("Enter a ref. image path:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png'
-    moving_path = input("Enter a moving image path:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png'
-    out_path = input("Enter an output path:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/reg.png'
-    deformation_field = non_rigid_registration(fixed_path,moving_path, out_path)
-    write_deform_field(deformation_field,   '/'.join(out_path.split('/')[:-1]))
+    import os
+
+    choose = -1
+    while (choose !=0 or choose !=1):
+        choose=input("1 for Dir or 0 for image path:") or 0
+        if choose =='0':
+            fixed_path = input("Enter a ref. image path:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png'
+            moving_path = input("Enter a moving image path:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png'
+            out_path = input("Enter an output path:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/reg.png'
+            deformation_field = non_rigid_registration(fixed_path,moving_path, out_path)
+            write_deform_field(deformation_field,   '/'.join(out_path.split('/')[:-1]))
+        elif choose =='1':
+            dir_path = input("Enter a dir path including IHC and HE directories:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info'
+            d={}
+            for root, dir, fnames in os.walk(dir_path):
+                root=root.replace(os.sep,'/')
+                for file in fnames:
+                    if 'thumbnail_tilesize'  in file and '.png' in file:
+                        parent_dir = root.split('/')[-2] 
+                    
+                        d[parent_dir] = d.get(parent_dir, {'fixed_path': '', 'moving_path': '', 'out_path':''})
+                        if 'CD3' in root:
+                            d[parent_dir]['fixed_path']=root+'/'+file
+                            d[parent_dir]['out_path']='/'.join(root.split('/')[:-1])+'/'+'CD3_HE_registered.png'
+                        elif 'HE' in  root:
+                            d[parent_dir]['moving_path']=root+'/'+file
+
+            for k, p in d.items():
+                deformation_field = non_rigid_registration(p['fixed_path'],p['moving_path'], p['out_path'])
+                write_deform_field(deformation_field,  prefix='/'.join(p['out_path'].split('/')[:-1]))
+
+
+
