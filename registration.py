@@ -126,6 +126,28 @@ def unmixHE(img, saveFile=None, Io=240, alpha=1, beta=0.15):
 
     return Inorm, H, E
 
+
+def initial_transform(fixed_image, moving_image):
+    initial_transform = sitk.CenteredTransformInitializer(fixed_image, moving_image, sitk.Euler2DTransform(), sitk.CenteredTransformInitializerFilter.GEOMETRY)
+    moving_resampled = sitk.Resample(moving_image, fixed_image, initial_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+    registration_method = sitk.ImageRegistrationMethod()
+    registration_method.SetMetricAsCorrelation()
+    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
+    registration_method.SetMetricSamplingPercentage(0.01)
+    registration_method.SetInterpolator(sitk.sitkLinear)
+    registration_method.SetOptimizerAsGradientDescent(learningRate = 1.0, numberOfIterations = 100, convergenceMinimumValue = 1e-6, convergenceWindowSize = 10)
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+    registration_method.SetShrinkFactorsPerLevel(shrinkFactors = [8, 4, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [8, 2, 1, 0])
+    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    registration_method.SetInitialTransform(initial_transform, inPlace = False)
+
+    final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32), sitk.Cast(moving_image, sitk.sitkFloat32))
+    
+    moving_resampled = sitk.Resample(moving_image, fixed_image, final_transform, sitk.sitkLinear, moving_image[0,0], moving_image.GetPixelID()) #default pixel=moving_image[0,0]
+    return moving_resampled
+
+
 def non_rigid_registration(fixedArray, movingArray,  default_tranform='bspline', grid_size=16, NumberOfResolutions=4,  MaximumNumberOfIterations=500 ):
     '!processed in grayscale!'
     # fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
@@ -151,13 +173,14 @@ def non_rigid_registration(fixedArray, movingArray,  default_tranform='bspline',
     movingImage =sitk.GetImageFromArray(movingArray)
     
     elastixImageFilter = sitk.ElastixImageFilter()
+    
     elastixImageFilter.SetFixedImage(fixedImage)
     elastixImageFilter.SetMovingImage(movingImage)
     sitk.WriteImage(fixedImage, './fixedImage.png')
     sitk.WriteImage(movingImage, './movingImage.png')
 
     parameterMapVector = sitk.VectorOfParameterMap()
-    parameterMapVector.append(sitk.GetDefaultParameterMap("rigid"))
+    # parameterMapVector.append(sitk.GetDefaultParameterMap("rigid"))
     parameterMapVector.append(sitk.GetDefaultParameterMap("bspline"))
     # parameterMapVector.append(sitk.GetDefaultParameterMap('nonrigid'))
     elastixImageFilter.SetParameterMap(parameterMapVector)
@@ -381,13 +404,21 @@ if __name__ == '__main__':
     while (choose !='0' and choose !='1'):
         choose=input("1 for Dir or 0 for image path:") or 0
         if choose =='0':
-            fixed_path = input("Enter a ref. image path:") or '1664369_MR16-1693 I4_LN_CD3.png'
-            moving_path = input("Enter a moving image path:") or '1664369_MR16-1693 I4_LN_HE.png'
-            out_path = input("Enter an output path:") or './out1664369.png'
+            fixed_path = input("Enter a ref. image path:") or '4216530_4216530_MR14-3865 G7_Tumor_CD4.png'
+            moving_path = input("Enter a moving image path:") or '4216530_4216530_MR14-3865 G7_Tumor_HE.png'
+            out_path = input("Enter an output path:") or './reg1.png'
 
             # fixedIHC, movingHE = load_IHC_HE(fixed_path, moving_path)
-            fixedIHC = cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE)
-            movingHE = cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE)
+            # fixedIHC = cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE)
+            # movingHE = cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE)
+
+            fixedIHC = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
+            movingHE = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+
+            movingHE = initial_transform(fixedIHC, movingHE)
+
+            movingHE = sitk.GetArrayFromImage(movingHE).astype(np.uint8)
+            fixedIHC = sitk.GetArrayFromImage(fixedIHC).astype(np.uint8)
 
             outGrayArray, transformParameterMap= non_rigid_registration(fixedIHC,movingHE, out_path)#movingImage to fixedImage 
             cv2.imwrite('./elastixOut.png',outGrayArray)
