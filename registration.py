@@ -4,6 +4,9 @@ import cv2
 from skimage.color import rgb2hed, hed2rgb
 import SimpleITK as sitk
 import os
+import pandas as pd
+from tqdm import tqdm
+
 # from skimage import data
 print(os.getcwd())
 
@@ -138,17 +141,16 @@ def initial_transform(fixed_image, moving_image):
     registration_method.SetOptimizerAsGradientDescent(learningRate = 1.0, numberOfIterations = 100, convergenceMinimumValue = 1e-6, convergenceWindowSize = 10)
     registration_method.SetOptimizerScalesFromPhysicalShift()
     registration_method.SetShrinkFactorsPerLevel(shrinkFactors = [8, 4, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [8, 2, 1, 0])
+    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [3, 2, 1, 0])
     registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     registration_method.SetInitialTransform(initial_transform, inPlace = False)
 
     final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32), sitk.Cast(moving_image, sitk.sitkFloat32))
     
-    moving_resampled = sitk.Resample(moving_image, fixed_image, final_transform, sitk.sitkLinear, moving_image[0,0], moving_image.GetPixelID()) #default pixel=moving_image[0,0]
-    return moving_resampled
+    return final_transform
 
 
-def non_rigid_registration(fixedArray, movingArray,  default_tranform='bspline', grid_size=16, NumberOfResolutions=4,  MaximumNumberOfIterations=500 ):
+def non_rigid_registration(fixedImage, movingImage,  default_tranform='bspline', grid_size=16, NumberOfResolutions=4,  MaximumNumberOfIterations=500 ):
     '!processed in grayscale!'
     # fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
     # movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
@@ -159,7 +161,7 @@ def non_rigid_registration(fixedArray, movingArray,  default_tranform='bspline',
     # fixedH = cv2.cvtColor(fixedH, cv2.COLOR_RGB2GRAY)
     #cv2.imwrite('H.png',H)
     #H=cv2.imread('H.png',cv2.IMREAD_GRAYSCALE)
-    fixedImage =sitk.GetImageFromArray(fixedArray)
+    # fixedImage =sitk.GetImageFromArray(fixedArray)
 
 
     # # Separate the stains from the IHC image
@@ -170,14 +172,14 @@ def non_rigid_registration(fixedArray, movingArray,  default_tranform='bspline',
     # movingH = (ihc_h[:,:,0]*255.0).astype(np.uint8)
     # # cv2.imwrite('./ihc_h.png',movingImage)
     # # movingImage = cv2.imread('./ihc_h.png',cv2.IMREAD_GRAYSCALE)
-    movingImage =sitk.GetImageFromArray(movingArray)
+    # movingImage =sitk.GetImageFromArray(movingArray)
     
     elastixImageFilter = sitk.ElastixImageFilter()
     
     elastixImageFilter.SetFixedImage(fixedImage)
     elastixImageFilter.SetMovingImage(movingImage)
-    sitk.WriteImage(fixedImage, './fixedImage.png')
-    sitk.WriteImage(movingImage, './movingImage.png')
+    sitk.WriteImage(sitk.Cast(fixedImage,sitk.sitkUInt8), './fixedImage.png')
+    sitk.WriteImage(sitk.Cast(movingImage, sitk.sitkUInt8), './movingImage.png')
 
     parameterMapVector = sitk.VectorOfParameterMap()
     # parameterMapVector.append(sitk.GetDefaultParameterMap("rigid"))
@@ -265,16 +267,18 @@ def non_rigid_registration(fixedArray, movingArray,  default_tranform='bspline',
 
 
 
-def deform_array(transformParameterMap, movingArray:np.array):
+def deform_array(init_tx, transformParameterMap, movingArray:np.array, refImage:sitk.Image):
     if len(movingArray.shape) ==2:
         movingArray=np.expand_dims(movingArray,axis=2)
    
     outArray=[]
     for c in range(movingArray.shape[2]):
         movingChannelImage = sitk.GetImageFromArray(movingArray[:,:,c])
+        movingResampled = sitk.Resample(movingChannelImage, refImage, init_tx, sitk.sitkLinear, movingChannelImage[0,0], movingChannelImage.GetPixelID()) #default pixel=moving_image[0,0]
+
         transformixImageFilter = sitk.TransformixImageFilter()
         transformixImageFilter.SetTransformParameterMap(transformParameterMap)
-        transformixImageFilter.SetMovingImage(movingChannelImage)
+        transformixImageFilter.SetMovingImage(movingResampled)
         transformixImageFilter.ComputeDeformationFieldOn()
         transformixImageFilter.Execute()
         out = transformixImageFilter.GetResultImage()
@@ -313,19 +317,19 @@ def write_deform_field(deformationField, prefix):
     # grid_image = sitk.ReadImage('Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369/1664369_MR16-1693 J3_Tumor_CD3/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png')
     # SRCtoTRG = np.zeros_like(sitk.GetArrayFromImage(grid_image))
 
-    
-
-    f = open(prefix+'/'+'deformField.txt','w')
-    f.write('#source(x,y)\t#target(x,y)\n')
-    for y in range(deformArray.shape[0]):
+    df=pd.DataFrame(index=range(deformArray.shape[0]*deformArray.shape[1]), columns=['source_x','source_y', 'target_x','target_y'])
+    print(prefix)
+    for i, y in enumerate(tqdm(range(deformArray.shape[0]))):
         for x in range(deformArray.shape[1]):
             nx,ny =  dis_tx.TransformPoint((x,y)) #(x - deformArray[(y,x)][0], y -deformArray[(y,x)][1]) #dis_tx.TransformPoint((x,y))
             if nx>=0 and nx < SRCtoTRG.shape[1]  and ny>=0 and ny < SRCtoTRG.shape[0]:
                 new_x, new_y = int(np.floor(nx)), int(np.floor(ny))
                 SRCtoTRG[(new_y, new_x)] = grid_image[(x,y)]
-                f.write(f'({x},{y})\t({new_x},{new_y})\n')
-    f.close()
-    cv2.imwrite(prefix+'/deformFixed.jpg', SRCtoTRG)
+                df.loc[i, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y]
+
+    df.to_csv(prefix+'/deformField.csv', index=False)
+    cv2.imwrite(prefix+'/deformGrid.jpg', SRCtoTRG)
+
 
 
     # resampler = sitk.ResampleImageFilter()
@@ -404,39 +408,38 @@ if __name__ == '__main__':
     while (choose !='0' and choose !='1'):
         choose=input("1 for Dir or 0 for image path:") or 0
         if choose =='0':
-            fixed_path = input("Enter a ref. image path:") or '4216530_4216530_MR14-3865 G7_Tumor_CD4.png'
-            moving_path = input("Enter a moving image path:") or '4216530_4216530_MR14-3865 G7_Tumor_HE.png'
+            fixed_path = input("Enter a ref. image path:") or '1664369_MR16-1693 J3_Tumor_FoxP3.png'
+            moving_path = input("Enter a moving image path:") or '1664369_MR16-1693 J3_Tumor_HE.png'
             out_path = input("Enter an output path:") or './reg1.png'
 
             # fixedIHC, movingHE = load_IHC_HE(fixed_path, moving_path)
-            # fixedIHC = cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE)
-            # movingHE = cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE)
+            fixedArray = cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE)
+            movingArray = cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE)
 
-            fixedIHC = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
-            movingHE = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+            fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
+            movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
 
-            movingHE = initial_transform(fixedIHC, movingHE)
-
-            movingHE = sitk.GetArrayFromImage(movingHE).astype(np.uint8)
-            fixedIHC = sitk.GetArrayFromImage(fixedIHC).astype(np.uint8)
-
-            outGrayArray, transformParameterMap= non_rigid_registration(fixedIHC,movingHE, out_path)#movingImage to fixedImage 
+            tx = initial_transform(fixedImage, movingImage) #RGB 채널로 3번 해야함 추가하기
+            movingResampled = sitk.Resample(movingImage, fixedImage, tx, sitk.sitkLinear, movingImage[0,0], movingImage.GetPixelID()) #default pixel=moving_image[0,0]
+     
+            outGrayArray, transformParameterMap= non_rigid_registration(fixedImage,movingResampled, out_path)#movingImage to fixedImage 
             cv2.imwrite('./elastixOut.png',outGrayArray)
 
             movingRGB = cv2.imread(moving_path, cv2.IMREAD_COLOR)
-            deformed_movingRGB, deformation_field= deform_array(transformParameterMap,movingRGB )    
+            deformed_movingRGB, deformation_field= deform_array(tx, transformParameterMap,movingRGB, fixedImage)    
             # deformation_field = deformationFilter.GetDeformationField()
             outpath=os.path.join(os.path.dirname(moving_path), 'deformed_'+os.path.basename(moving_path))
             cv2.imwrite(outpath,deformed_movingRGB)
+            sitk.WriteTransform(tx,'/'.join(out_path.split('/')[:-1])+'/initTrans.tfm')
             write_deform_field(deformation_field,   '/'.join(out_path.split('/')[:-1])) #forwardfield
 
 
 
-            inv_deformation_field = inverse_deformationfield(deformation_field)#fixedImage to movingImage #backwardfield
+            '''inv_deformation_field = inverse_deformationfield(deformation_field)#fixedImage to movingImage #backwardfield
             sourceRGB = cv2.imread(fixed_path, cv2.IMREAD_COLOR)
             deformed_fixedRGB = deform_by_deformatinfield(deformation_field, sourceRGB, refImage=sitk.GetImageFromArray(movingHE))
             outpath=os.path.join(os.path.dirname(fixed_path), 'deformed_'+os.path.basename(fixed_path))
-            cv2.imwrite(outpath,deformed_fixedRGB)
+            cv2.imwrite(outpath,deformed_fixedRGB)'''
 
 
 
