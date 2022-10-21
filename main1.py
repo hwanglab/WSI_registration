@@ -91,8 +91,11 @@ for pID in (os.listdir(moving_dir)):
                 cv2.imwrite((os.sep).join(tokens), blend)
 
 
-                sitk.WriteTransform(tx,   os.path.join((os.sep).join(out_path.split(os.sep)[:-1]), 'initTrans.tfm')  )
-                write_deform_field(deformation_field,   (os.sep).join(out_path.split(os.sep)[:-1])) #forwardfield  
+                sitk.WriteTransform(tx,   os.path.join((os.sep).join(out_path.split(os.sep)[:-1]), 'initTrans.tfm')  ) #wirte inital affine transform
+                sitk.WriteParameterFile(transformParameterMap[0], os.path.join((os.sep).join(out_path.split(os.sep)[:-1]), 'TransformParameterMap.txt')) #write non-rgid trasnfom map 
+                deformation_file = os.path.join((os.sep).join(out_path.split(os.sep)[:-1]),'deformation_field.nii.gz')
+                sitk.WriteImage(deformation_field,deformation_file)
+                # write_deform_field(tx, deformation_field,   (os.sep).join(out_path.split(os.sep)[:-1]), fixedImage) #forwardfield  
 
                 f = open((os.sep).join(out_path.split(os.sep)[:-1])+os.sep+'pair.txt','w')
                 f.write('fixed_image: '+ fixed_path+'\n')

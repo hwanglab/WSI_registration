@@ -300,39 +300,45 @@ def deform_array(init_tx, transformParameterMap, movingArray:np.array, refImage:
 
 
 
-def write_deform_field(deformationField, prefix):
+def write_deform_field(init_trans, deformationField, prefix, fixedImage):
     # afine_tx =sitk.AffineTransform(sitk.Cast(deformationField, sitk.sitkVectorFloat64))
     dis_tx=sitk.DisplacementFieldTransform(sitk.Cast(deformationField, sitk.sitkVectorFloat64))
 
 
     grid_image = sitk.GridSource(outputPixelType=sitk.sitkUInt16,
                                 size=deformationField.GetSize(), 
-                                sigma=(0.1,0.1), gridSpacing=(16.0,16.0))
+                                sigma=(0.1,0.1), gridSpacing=(32.0,32.0))
     # grid_image.CopyInformation(deformationField)\
-    SRCtoTRG = np.zeros((grid_image.GetSize()[1], grid_image.GetSize()[0])) 
+    gridArr = np.zeros((grid_image.GetSize()[1], grid_image.GetSize()[0])) 
 
 
    
     deformArray = sitk.GetArrayFromImage(deformationField)
 
-    # grid_image = sitk.ReadImage('Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369/1664369_MR16-1693 J3_Tumor_CD3/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png')
-    # SRCtoTRG = np.zeros_like(sitk.GetArrayFromImage(grid_image))
+    # grid_image = sitk.ReadImage('Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/Van_Abel_HE_thumbnails/1664369/1664369_MR16-1693 I4_LN_HE.png')
+    SRCtoTRG = np.zeros_like(sitk.GetArrayFromImage(fixedImage))
 
     df=pd.DataFrame(index=range(deformArray.shape[0]*deformArray.shape[1]), columns=['source_x','source_y', 'target_x','target_y'])
     print(prefix)
     index=0
     for y in tqdm(range(deformArray.shape[0])):
         for x in range(deformArray.shape[1]):
-            nx,ny =  dis_tx.TransformPoint((x,y)) #(x - deformArray[(y,x)][0], y -deformArray[(y,x)][1]) #dis_tx.TransformPoint((x,y))
+            tx, ty = init_trans.TransformPoint((x,y))
+            tx, ty = int(np.floor(tx)), int(np.floor(ty))
+            if tx<0 or tx >= deformArray.shape[1]  or ty<0 or ty >= deformArray.shape[0]: continue
+
+            nx,ny =  dis_tx.TransformPoint((tx,ty)) #(x - deformArray[(y,x)][0], y -deformArray[(y,x)][1]) #dis_tx.TransformPoint((x,y))
             if nx>=0 and nx < SRCtoTRG.shape[1]  and ny>=0 and ny < SRCtoTRG.shape[0]:
                 new_x, new_y = int(np.floor(nx)), int(np.floor(ny))
-                SRCtoTRG[(new_y, new_x)] = grid_image[(x,y)]
+                SRCtoTRG[(new_y, new_x)] = fixedImage[(x,y)]
+                gridArr[(new_y, new_x)] = grid_image[(x,y)]
                 df.loc[index, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y]
                 index +=1
     
 
     df.to_csv(prefix+'/deformField.csv', index=False)
-    cv2.imwrite(prefix+'/deformGrid.jpg', SRCtoTRG)
+    cv2.imwrite(prefix+'/displaceFixedImage.jpg', SRCtoTRG)
+    cv2.imwrite(prefix+'/deformGrid.jpg', gridArr.astype(np.uint8))
 
 
 
