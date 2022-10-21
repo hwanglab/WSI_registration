@@ -131,7 +131,7 @@ def unmixHE(img, saveFile=None, Io=240, alpha=1, beta=0.15):
 
 
 def initial_transform(fixed_image, moving_image):
-    initial_transform = sitk.CenteredTransformInitializer(fixed_image, moving_image, sitk.Euler2DTransform(), sitk.CenteredTransformInitializerFilter.GEOMETRY)
+    initial_transform = sitk.CenteredTransformInitializer(fixed_image, moving_image, sitk.AffineTransform(2), sitk.CenteredTransformInitializerFilter.GEOMETRY)
     moving_resampled = sitk.Resample(moving_image, fixed_image, initial_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
     registration_method = sitk.ImageRegistrationMethod()
     registration_method.SetMetricAsCorrelation()
@@ -146,6 +146,7 @@ def initial_transform(fixed_image, moving_image):
     registration_method.SetInitialTransform(initial_transform, inPlace = False)
 
     final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32), sitk.Cast(moving_image, sitk.sitkFloat32))
+   
     
     return final_transform
 
@@ -319,13 +320,16 @@ def write_deform_field(deformationField, prefix):
 
     df=pd.DataFrame(index=range(deformArray.shape[0]*deformArray.shape[1]), columns=['source_x','source_y', 'target_x','target_y'])
     print(prefix)
-    for i, y in enumerate(tqdm(range(deformArray.shape[0]))):
+    index=0
+    for y in tqdm(range(deformArray.shape[0])):
         for x in range(deformArray.shape[1]):
             nx,ny =  dis_tx.TransformPoint((x,y)) #(x - deformArray[(y,x)][0], y -deformArray[(y,x)][1]) #dis_tx.TransformPoint((x,y))
             if nx>=0 and nx < SRCtoTRG.shape[1]  and ny>=0 and ny < SRCtoTRG.shape[0]:
                 new_x, new_y = int(np.floor(nx)), int(np.floor(ny))
                 SRCtoTRG[(new_y, new_x)] = grid_image[(x,y)]
-                df.loc[i, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y]
+                df.loc[index, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y]
+                index +=1
+    
 
     df.to_csv(prefix+'/deformField.csv', index=False)
     cv2.imwrite(prefix+'/deformGrid.jpg', SRCtoTRG)
