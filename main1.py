@@ -1,5 +1,7 @@
 import os
 from pickletools import uint8
+
+from sqlalchemy import false
 from IPython.display import clear_output
 from registration import *
 import shutil
@@ -14,8 +16,8 @@ out_dir=out_dir.replace('/',os.sep)
 
 if not os.path.exists(out_dir): os.mkdir(out_dir)
 
-
 for pID in (os.listdir(moving_dir)):
+
     # clear_output(wait=True)
     if not os.path.exists(out_dir+'/'+pID): os.mkdir(out_dir+'/'+pID)
     
@@ -42,8 +44,11 @@ for pID in (os.listdir(moving_dir)):
             stainIDFixed = tokens[-1]
 
             if (LN_Tumor in fileMoving) and (pID in fileFixed) and (LN_Tumor in fileFixed) and (pID in fileMoving) :
+
+
                 fixed_path = pathFixed
                 moving_path = pathMoving
+
 
 
                 outPatientDir = os.path.join(out_dir, pID)
@@ -70,7 +75,7 @@ for pID in (os.listdir(moving_dir)):
 
                 
                 movingRGB = cv2.imread(moving_path, cv2.IMREAD_COLOR)
-                deformed, deformation_field= deform_array(tx, transformParameterMap,movingRGB, fixedImage)    
+                initTransformed, deformed, deformation_field= deform_array(tx, transformParameterMap,movingRGB, fixedImage)    
                 # deformation_field = deformationFilter.GetDeformationField()
                 # outpath=os.path.join(os.path.dirname(moving_path), 'deformed_'+os.path.basename(moving_path))
 
@@ -95,7 +100,7 @@ for pID in (os.listdir(moving_dir)):
                 sitk.WriteParameterFile(transformParameterMap[0], os.path.join((os.sep).join(out_path.split(os.sep)[:-1]), 'TransformParameterMap.txt')) #write non-rgid trasnfom map 
                 deformation_file = os.path.join((os.sep).join(out_path.split(os.sep)[:-1]),'deformation_field.nii.gz')
                 sitk.WriteImage(deformation_field,deformation_file)
-                # write_deform_field(tx, deformation_field,   (os.sep).join(out_path.split(os.sep)[:-1]), fixedImage) #forwardfield  
+                write_deform_field(tx, deformation_field,   (os.sep).join(out_path.split(os.sep)[:-1]), fixedImage) #forwardfield  
 
                 f = open((os.sep).join(out_path.split(os.sep)[:-1])+os.sep+'pair.txt','w')
                 f.write('fixed_image: '+ fixed_path+'\n')

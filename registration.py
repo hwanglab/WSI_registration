@@ -132,7 +132,7 @@ def unmixHE(img, saveFile=None, Io=240, alpha=1, beta=0.15):
 
 def initial_transform(fixed_image, moving_image):
     initial_transform = sitk.CenteredTransformInitializer(fixed_image, moving_image, sitk.AffineTransform(2), sitk.CenteredTransformInitializerFilter.GEOMETRY)
-    moving_resampled = sitk.Resample(moving_image, fixed_image, initial_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
+    # moving_resampled = sitk.Resample(moving_image, fixed_image, initial_transform, sitk.sitkLinear, 0.0, moving_image.GetPixelID())
     registration_method = sitk.ImageRegistrationMethod()
     registration_method.SetMetricAsCorrelation()
     registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
@@ -140,14 +140,13 @@ def initial_transform(fixed_image, moving_image):
     registration_method.SetInterpolator(sitk.sitkLinear)
     registration_method.SetOptimizerAsGradientDescent(learningRate = 1.0, numberOfIterations = 100, convergenceMinimumValue = 1e-6, convergenceWindowSize = 10)
     registration_method.SetOptimizerScalesFromPhysicalShift()
-    registration_method.SetShrinkFactorsPerLevel(shrinkFactors = [8, 4, 2, 1])
-    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [3, 2, 1, 0])
+    registration_method.SetShrinkFactorsPerLevel(shrinkFactors = [2, 1]) #[8, 4, 2, 1]
+    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [1, 0])#[3, 2, 1, 0]
     registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     registration_method.SetInitialTransform(initial_transform, inPlace = False)
 
     final_transform = registration_method.Execute(sitk.Cast(fixed_image, sitk.sitkFloat32), sitk.Cast(moving_image, sitk.sitkFloat32))
-   
-    
+       
     return final_transform
 
 
@@ -272,11 +271,12 @@ def deform_array(init_tx, transformParameterMap, movingArray:np.array, refImage:
     if len(movingArray.shape) ==2:
         movingArray=np.expand_dims(movingArray,axis=2)
    
-    outArray=[]
+    initArray, outArray=[],[]
     for c in range(movingArray.shape[2]):
         movingChannelImage = sitk.GetImageFromArray(movingArray[:,:,c])
         movingResampled = sitk.Resample(movingChannelImage, refImage, init_tx, sitk.sitkLinear, movingChannelImage[0,0], movingChannelImage.GetPixelID()) #default pixel=moving_image[0,0]
-
+        initArray.append(sitk.GetArrayFromImage(movingResampled))
+       
         transformixImageFilter = sitk.TransformixImageFilter()
         transformixImageFilter.SetTransformParameterMap(transformParameterMap)
         transformixImageFilter.SetMovingImage(movingResampled)
@@ -287,8 +287,9 @@ def deform_array(init_tx, transformParameterMap, movingArray:np.array, refImage:
 
 
         outArray.append(sitk.GetArrayFromImage(out))
-    deformedArray = np.dstack(outArray)       
-    return np.squeeze(deformedArray), transformixImageFilter.GetDeformationField()
+    transformedArray = np.dstack(initArray)#intial rigid transformed image, before deformation     
+    deformedArray = np.dstack(outArray)#final deformed image, after rigid, norigid transformation       
+    return np.squeeze(transformedArray),np.squeeze(deformedArray), transformixImageFilter.GetDeformationField()
 
 
         
@@ -418,8 +419,8 @@ if __name__ == '__main__':
     while (choose !='0' and choose !='1'):
         choose=input("1 for Dir or 0 for image path:") or 0
         if choose =='0':
-            fixed_path = input("Enter a ref. image path:") or '1664369_MR16-1693 J3_Tumor_FoxP3.png'
-            moving_path = input("Enter a moving image path:") or '1664369_MR16-1693 J3_Tumor_HE.png'
+            fixed_path = input("Enter a ref. image path:") or '4216530_4216530_MR14-3865 G7_Tumor_HE.png'
+            moving_path = input("Enter a moving image path:") or '4216530_MR14-3865 G7_Tumor_CD3.png'
             out_path = input("Enter an output path:") or './reg1.png'
 
             # fixedIHC, movingHE = load_IHC_HE(fixed_path, moving_path)
@@ -441,7 +442,7 @@ if __name__ == '__main__':
             outpath=os.path.join(os.path.dirname(moving_path), 'deformed_'+os.path.basename(moving_path))
             cv2.imwrite(outpath,deformed_movingRGB)
             sitk.WriteTransform(tx,'/'.join(out_path.split('/')[:-1])+'/initTrans.tfm')
-            write_deform_field(deformation_field,   '/'.join(out_path.split('/')[:-1])) #forwardfield
+            write_deform_field(tx, deformation_field,   '/'.join(out_path.split('/')[:-1]), fixedImage) #forwardfield
 
 
 
