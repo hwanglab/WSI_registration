@@ -1,0 +1,14 @@
+*.png
+*.svs
+*.csv
+*.jpg
+*.bak
+__pycache__/*
+*.txt
+*.pdf
+qupath_registration/
+*.tfm
+*.zip
+*.pt
+*.pth
+
