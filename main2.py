@@ -27,34 +27,41 @@ for root,dirs, fnames in os.walk(all_thumbnail_path):
             d[key][movingStain].append({'root': root, 'stain': stainID, 'fname':fname, 'type':type})
 
 fixed_path, moving_path=None,None
-
+flag = False
 for key in d:
     for fixed_item in tqdm(d[key][fixStain]):
         for moving_item in  d[key][movingStain]:
 
+
             fixed_path = os.path.join(fixed_item['root'], fixed_item['fname'])
             moving_path = os.path.join(moving_item['root'], moving_item['fname'])
+            if '1664369' in moving_path and 'CD20' in moving_path and 'Tumor' in moving_path: flag = True
+            if not flag: continue
             if fixed_path is None or moving_path is None: continue
 
-            outdir = fixed_item['root']+os.sep+'registration_'+fixed_item['type']+'_'+fixed_item['stain']+'_'+moving_item['stain']
 
+            outdir = fixed_item['root']+os.sep+'registration_'+fixed_item['type']+'_'+fixed_item['stain']+'_'+moving_item['stain']
             if not os.path.exists(outdir): os.mkdir(outdir)
 
-
-            fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
-            movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+            # fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
+            # movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+            fixedImage=sitk.GetImageFromArray(cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE).astype(np.float32))
+            movingImage=sitk.GetImageFromArray(cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE).astype(np.float32))
 
 
 
             tx = initial_transform(fixedImage, movingImage) 
             movingResampled = sitk.Resample(movingImage, fixedImage, tx, sitk.sitkLinear, movingImage[0,0], movingImage.GetPixelID()) #default pixel=moving_image[0,0]
-            
-            outGrayArray, transformParameterMap= non_rigid_registration(fixedImage,movingResampled)#movingImage to fixedImage 
+            # sitk.WriteImage(sitk.Cast(movingResampled, sitk.sitkUInt8),'a.png')
+            out,outTx = bspline_registration(fixedImage, movingResampled)
+            # outGrayArray, transformParameterMap= non_rigid_registration(fixedImage,movingResampled)#movingImage to fixedImage 
             # cv2.imwrite('./elastixOut.png',outGrayArray)
 
             
             movingRGB = cv2.imread(moving_path, cv2.IMREAD_COLOR)
-            initTransformed, deformed, deformation_field= deform_array(tx, transformParameterMap,movingRGB, fixedImage)    
+            initTransformed, deformed= deform_array1(tx, outTx,movingRGB, fixedImage)    
+
+            # initTransformed, deformed, deformation_field= deform_array1(tx, transformParameterMap,movingRGB, fixedImage)    
             # deformation_field = deformationFilter.GetDeformationField()
             # outpath=os.path.join(os.path.dirname(moving_path), 'deformed_'+os.path.basename(moving_path))
 
@@ -78,10 +85,13 @@ for key in d:
 
 
             sitk.WriteTransform(tx,   os.path.join(outdir, 'initTrans.tfm')  ) #wirte inital affine transform
-            sitk.WriteParameterFile(transformParameterMap[0], os.path.join(outdir, 'TransformParameterMap.txt')) #write non-rgid trasnfom map 
-            deformation_file = os.path.join(outdir,'deformation_field.nii.gz')
-            sitk.WriteImage(deformation_field,deformation_file)
-            write_deform_field(tx, deformation_field,  outdir, fixedImage) #forwardfield  
+            # sitk.WriteParameterFile(transformParameterMap[0], os.path.join(outdir, 'TransformParameterMap.txt')) #write non-rgid trasnfom map 
+            # deformation_file = os.path.join(outdir,'deformation_field.nii.gz')
+            # sitk.WriteImage(deformation_field,deformation_file)
+            # write_deform_field(tx, deformation_field,  outdir, fixedImage) #forwardfield  
+
+            write_deform_field1(tx, outTx,  outdir, fixedImage) #forwardfield  
+
 
             f = open(os.path.join(outdir, 'pair.txt'),'w')
             f.write('fixed_image: '+ fixed_path+'\n')

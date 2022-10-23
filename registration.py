@@ -150,6 +150,48 @@ def initial_transform(fixed_image, moving_image):
     return final_transform
 
 
+def bspline_registration(fixed, moving):
+    transformDomainMeshSize=[8]*moving.GetDimension()
+    tx = sitk.BSplineTransformInitializer(fixed,
+                                        transformDomainMeshSize )
+
+    print("Initial Parameters:");
+    print(tx.GetParameters())
+
+    R = sitk.ImageRegistrationMethod()
+    R.SetMetricAsCorrelation()
+
+    R.SetOptimizerAsLBFGSB(gradientConvergenceTolerance=1e-5,
+                        numberOfIterations=100,
+                        maximumNumberOfCorrections=5,
+                        maximumNumberOfFunctionEvaluations=1000,
+                        costFunctionConvergenceFactor=1e+7)
+    R.SetInitialTransform(tx, True)
+    R.SetInterpolator(sitk.sitkLinear)
+    
+
+    # R.AddCommand( sitk.sitkIterationEvent, lambda: command_iteration(R) )
+
+    outTx = R.Execute(fixed, moving)
+    # a=outTx.TransformPoint((0,0))
+
+    print("-------")
+    print(outTx)
+    print("Optimizer stop condition: {0}".format(R.GetOptimizerStopConditionDescription()))
+    print(" Iteration: {0}".format(R.GetOptimizerIteration()))
+    print(" Metric value: {0}".format(R.GetMetricValue()))
+
+
+    resampler = sitk.ResampleImageFilter()
+    resampler.SetReferenceImage(fixed)
+    resampler.SetInterpolator(sitk.sitkLinear)
+    # resampler.SetDefaultPixelValue(100)
+    resampler.SetTransform(outTx)
+    
+
+    out = resampler.Execute(moving)
+    return out,outTx
+
 def non_rigid_registration(fixedImage, movingImage,  default_tranform='bspline', grid_size=16, NumberOfResolutions=4,  MaximumNumberOfIterations=500 ):
     '!processed in grayscale!'
     # fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
@@ -178,11 +220,11 @@ def non_rigid_registration(fixedImage, movingImage,  default_tranform='bspline',
     
     elastixImageFilter.SetFixedImage(fixedImage)
     elastixImageFilter.SetMovingImage(movingImage)
-    sitk.WriteImage(sitk.Cast(fixedImage,sitk.sitkUInt8), './fixedImage.png')
-    sitk.WriteImage(sitk.Cast(movingImage, sitk.sitkUInt8), './movingImage.png')
+    # sitk.WriteImage(sitk.Cast(fixedImage,sitk.sitkUInt8), './fixedImage.png')
+    # sitk.WriteImage(sitk.Cast(movingImage, sitk.sitkUInt8), './movingImage.png')
 
     parameterMapVector = sitk.VectorOfParameterMap()
-    # parameterMapVector.append(sitk.GetDefaultParameterMap("rigid"))
+    # parameterMapVector.append(sitk.GetDefaultParameterMap("affine"))
     parameterMapVector.append(sitk.GetDefaultParameterMap("bspline"))
     # parameterMapVector.append(sitk.GetDefaultParameterMap('nonrigid'))
     elastixImageFilter.SetParameterMap(parameterMapVector)
@@ -279,6 +321,7 @@ def deform_array(init_tx, transformParameterMap, movingArray:np.array, refImage:
        
         transformixImageFilter = sitk.TransformixImageFilter()
         transformixImageFilter.SetTransformParameterMap(transformParameterMap)
+        
         transformixImageFilter.SetMovingImage(movingResampled)
         transformixImageFilter.ComputeDeformationFieldOn()
         transformixImageFilter.Execute()
@@ -291,13 +334,76 @@ def deform_array(init_tx, transformParameterMap, movingArray:np.array, refImage:
     deformedArray = np.dstack(outArray)#final deformed image, after rigid, norigid transformation       
     return np.squeeze(transformedArray),np.squeeze(deformedArray), transformixImageFilter.GetDeformationField()
 
+def deform_array1(init_tx, outTx, movingArray:np.array, refImage:sitk.Image):
+    if len(movingArray.shape) ==2:
+        movingArray=np.expand_dims(movingArray,axis=2)
+   
+    initArray, outArray=[],[]
+    for c in range(movingArray.shape[2]):
+        movingChannelImage = sitk.GetImageFromArray(movingArray[:,:,c])
+        movingResampled = sitk.Resample(movingChannelImage, refImage, init_tx, sitk.sitkLinear, movingChannelImage[0,0], movingChannelImage.GetPixelID()) #default pixel=moving_image[0,0]
+        initArray.append(sitk.GetArrayFromImage(movingResampled))
+       
+        resampler = sitk.ResampleImageFilter()
+        resampler.SetReferenceImage(refImage)
+        resampler.SetInterpolator(sitk.sitkLinear)
+        # resampler.SetDefaultPixelValue(100)
+        resampler.SetTransform(outTx)
+        
 
+        out = resampler.Execute(movingResampled)
+        outArray.append(sitk.GetArrayFromImage(out))
+    transformedArray = np.dstack(initArray)#intial rigid transformed image, before deformation     
+    deformedArray = np.dstack(outArray)#final deformed image, after rigid, norigid transformation       
+    return np.squeeze(transformedArray),np.squeeze(deformedArray)
         
    
     
+def write_deform_field1(init_trans, dis_tx, prefix, fixedImage):
 
+    grid_image = sitk.GridSource(outputPixelType=sitk.sitkUInt16,
+                                size=fixedImage.GetSize(), 
+                                sigma=(0.1,0.1), gridSpacing=(32.0,32.0))
+    # grid_image.CopyInformation(deformationField)\
+    gridArr = np.zeros((grid_image.GetSize()[1], grid_image.GetSize()[0])) 
+
+
+   
+    deformArray = sitk.GetArrayFromImage(fixedImage)
+
+    # grid_image = sitk.ReadImage('Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/Van_Abel_HE_thumbnails/1664369/1664369_MR16-1693 I4_LN_HE.png')
+    SRCtoTRG = np.zeros_like(sitk.GetArrayFromImage(fixedImage))
+
+    df=pd.DataFrame(index=range(deformArray.shape[0]*deformArray.shape[1]), columns=['source_x','source_y', 'target_x','target_y'])
+    print(prefix)
+    index=0
+    for y in tqdm(range(deformArray.shape[0])):
+        for x in range(deformArray.shape[1]):
+            tx, ty = init_trans.TransformPoint((x,y))
+            tx, ty = int(np.floor(tx)), int(np.floor(ty))
+            if tx<0 or tx >= deformArray.shape[1]  or ty<0 or ty >= deformArray.shape[0]: continue
+
+            nx,ny =  dis_tx.TransformPoint((tx,ty)) #(x - deformArray[(y,x)][0], y -deformArray[(y,x)][1]) #dis_tx.TransformPoint((x,y))
+            if nx>=0 and nx < SRCtoTRG.shape[1]  and ny>=0 and ny < SRCtoTRG.shape[0]:
+                new_x, new_y = int(np.floor(nx)), int(np.floor(ny))
+                SRCtoTRG[(new_y, new_x)] = fixedImage[(x,y)]
+                gridArr[(new_y, new_x)] = grid_image[(x,y)]
+                df.loc[index, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y]
+                index +=1
     
-    # cv2.imwrite(out_path, outImage)
+
+    df.to_csv(prefix+'/deformField.csv', index=False)
+    cv2.imwrite(prefix+'/displaceFixedImage.jpg', SRCtoTRG)
+    cv2.imwrite(prefix+'/deformGrid.jpg', gridArr.astype(np.uint8))
+
+
+
+    # resampler = sitk.ResampleImageFilter()
+    # resampler.SetReferenceImage(deformationField)  # Or any target geometry
+    # resampler.SetTransform(sitk.DisplacementFieldTransform(
+    #     sitk.Cast(deformationField, sitk.sitkVectorFloat64)))
+    # warped = resampler.Execute(movingR)
+    # cv2.imwrite(prefix+'warped.jpg', sitk.GetArrayFromImage(warped))
 
 
 
