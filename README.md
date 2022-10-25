@@ -1,10 +1,7 @@
-# Part2. Mapping coordinates of source and target sldies
+# Registration of Whole Slide Images(WSIs)
 
-## Usage
-Full command  
-```bash
-python map_coordinate.py --data_root_path DATA_DIRECTORY --save_path RESULT_DIRECTORY
-```
+## Part1. Registraion between H&E and IHC Slides
 
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+## Part2. Mapping coordinates of source and target sldies
+Please refer [here](https://github.com/hwanglab/WSI_registration/blob/main/README.md) for usage.
+To see the example of regarding this, please take a look at [this](https://github.com/hwanglab/WSI_registration/blob/main/mapping_coordinate_example.ipynb)
