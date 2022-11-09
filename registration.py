@@ -1,3 +1,5 @@
+
+
 from ctypes.wintypes import HACCEL
 import numpy as np
 import cv2
@@ -6,15 +8,29 @@ import SimpleITK as sitk
 import os
 import pandas as pd
 from tqdm import tqdm
-
+import math
 # from skimage import data
 print(os.getcwd())
 
 
-prefix = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/'
-fixed_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_CD3___thumbnail_tilesize_x-8-y-8.png'
-moving_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/1664369_MR16-1693 J3_Tumor_HE___thumbnail_tilesize_x-8-y-8.png'
-reg_path = 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info/1664369_MR16-1693 J3_Tumor_HE/reg1.png'
+
+
+def ErrorMetrics(original, compressed):
+    '''psnr, rmse'''
+    mse = np.mean((original - compressed) ** 2)
+    if(mse == 0):  # MSE is zero means no noise is present in the signal .
+                  # Therefore PSNR have no importance.
+        return 100
+    max_pixel = 255.0
+    psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
+
+
+    # MSE = np.square(np.subtract(actual,predicted)).mean()   
+   
+    rmse = math.sqrt(mse)  
+
+    return psnr, rmse
+
 
 def get_rgb2hed(thumbnail, write_basepath=None)->list: 
     'rgb -> [hematoxylin, Eosin, DAB]'
@@ -140,8 +156,8 @@ def initial_transform(fixed_image, moving_image):
     registration_method.SetInterpolator(sitk.sitkLinear)
     registration_method.SetOptimizerAsGradientDescent(learningRate = 1.0, numberOfIterations = 100, convergenceMinimumValue = 1e-6, convergenceWindowSize = 10)
     registration_method.SetOptimizerScalesFromPhysicalShift()
-    registration_method.SetShrinkFactorsPerLevel(shrinkFactors = [2, 1]) #[8, 4, 2, 1]
-    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [1, 0])#[3, 2, 1, 0]
+    registration_method.SetShrinkFactorsPerLevel(shrinkFactors = [4, 2, 1]) #[8, 4, 2, 1]
+    registration_method.SetSmoothingSigmasPerLevel(smoothingSigmas = [2, 1, 0])#[3, 2, 1, 0]
     registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     registration_method.SetInitialTransform(initial_transform, inPlace = False)
 
@@ -155,7 +171,7 @@ def bspline_registration(fixed, moving):
     tx = sitk.BSplineTransformInitializer(fixed,
                                         transformDomainMeshSize )
 
-    print("Initial Parameters:");
+    print("Initial Parameters:")
     print(tx.GetParameters())
 
     R = sitk.ImageRegistrationMethod()
@@ -388,7 +404,7 @@ def write_deform_field1(init_trans, dis_tx, prefix, fixedImage):
                 new_x, new_y = int(np.floor(nx)), int(np.floor(ny))
                 SRCtoTRG[(new_y, new_x)] = fixedImage[(x,y)]
                 gridArr[(new_y, new_x)] = grid_image[(x,y)]
-                df.loc[index, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y]
+                df.loc[index, ['source_x','source_y', 'target_x','target_y']] = [x,y, new_x,new_y] #fixed -> moved
                 index +=1
     
 
@@ -517,7 +533,12 @@ def load_IHC_HE(fixed_path, moving_path):
     return fixedIHC, movingHE
 
 
+#%%
 
+prefix = './aacr_test'
+fixed_path_image = '1664369_MR16-1693 J3_Tumor_FoxP3___thumbnail_tilesize_x-1-y-1.png'
+moving_path_image = '1664369_MR16-1693 J3_Tumor_FoxP3___thumbnail_tilesize_x-1-y-1_transformed.png'
+deformed_path_image = '1664369_MR16-1693 J3_Tumor_FoxP3___thumbnail_tilesize_x-1-y-1_deformed.png'
 if __name__ == '__main__':
     import os
 
@@ -525,32 +546,65 @@ if __name__ == '__main__':
     while (choose !='0' and choose !='1'):
         choose=input("1 for Dir or 0 for image path:") or 0
         if choose =='0':
-            fixed_path = input("Enter a ref. image path:") or '4216530_4216530_MR14-3865 G7_Tumor_HE.png'
-            moving_path = input("Enter a moving image path:") or '4216530_MR14-3865 G7_Tumor_CD3.png'
-            out_path = input("Enter an output path:") or './reg1.png'
+            fixed_path = input("Enter a ref. image path:") or os.path.join(prefix,fixed_path_image)
+            moving_path = input("Enter a moving image path:") or os.path.join(prefix,moving_path_image)
+            outpath = input("Enter an output path:") or os.path.join(prefix, deformed_path_image )
 
             # fixedIHC, movingHE = load_IHC_HE(fixed_path, moving_path)
             fixedArray = cv2.imread(fixed_path, cv2.IMREAD_GRAYSCALE)
             movingArray = cv2.imread(moving_path, cv2.IMREAD_GRAYSCALE)
 
-            fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
-            movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+
+
+            h1,w1=fixedArray.shape
+            h2,w2=movingArray.shape
+            w = w1 if w1>=w2 else w2
+            h = h1 if h1>=h2 else h2
+            fixedBackColor = fixedArray[0][0]
+            movingBackColor = movingArray[0][0]
+
+            fixedCanvas= np.full((h,w),fixedBackColor, dtype=np.float32)
+            movingCanvas= np.full((h,w),movingBackColor, dtype=np.float32)
+
+            fixedCanvas[0:h1,0:w1]=fixedArray
+            fixedCanvas[0:h2,0:w2]=movingArray
+            
+            # fixedImage = sitk.ReadImage(fixed_path, sitk.sitkFloat32)
+            # movingImage = sitk.ReadImage(moving_path, sitk.sitkFloat32)
+            fixedImage = sitk.GetImageFromArray(fixedCanvas)
+            movingImage = sitk.GetImageFromArray(movingCanvas)
 
             tx = initial_transform(fixedImage, movingImage) #RGB 채널로 3번 해야함 추가하기
             movingResampled = sitk.Resample(movingImage, fixedImage, tx, sitk.sitkLinear, movingImage[0,0], movingImage.GetPixelID()) #default pixel=moving_image[0,0]
      
-            outGrayArray, transformParameterMap= non_rigid_registration(fixedImage,movingResampled, out_path)#movingImage to fixedImage 
-            cv2.imwrite('./elastixOut.png',outGrayArray)
+            # outGrayArray, transformParameterMap= non_rigid_registration(fixedImage,movingResampled, out_path)#movingImage to fixedImage 
+            # cv2.imwrite('./elastixOut.png',outGrayArray)
+            out,outTx = bspline_registration(fixedImage, movingResampled)
 
             movingRGB = cv2.imread(moving_path, cv2.IMREAD_COLOR)
-            deformed_movingRGB, deformation_field= deform_array(tx, transformParameterMap,movingRGB, fixedImage)    
+            initTransformed, deformed= deform_array1(tx, outTx,movingRGB, fixedImage)    
+
+
+ 
+            # deformed_movingRGB, deformation_field= deform_array(tx, transformParameterMap,movingRGB, fixedImage)    
             # deformation_field = deformationFilter.GetDeformationField()
-            outpath=os.path.join(os.path.dirname(moving_path), 'deformed_'+os.path.basename(moving_path))
-            cv2.imwrite(outpath,deformed_movingRGB)
-            sitk.WriteTransform(tx,'/'.join(out_path.split('/')[:-1])+'/initTrans.tfm')
-            write_deform_field(tx, deformation_field,   '/'.join(out_path.split('/')[:-1]), fixedImage) #forwardfield
+            cv2.imwrite(outpath,deformed)
+            outdir = os.path.dirname(outpath)
+            outpath = os.path.join(outdir, 'initTransformed.png')
+            cv2.imwrite(outpath,initTransformed)
+            targetRGB = cv2.imread(fixed_path,cv2.IMREAD_COLOR)       
+            targetCanvas=np.full(deformed.shape, targetRGB[0][0])       
+            blend = cv2.addWeighted(targetCanvas.astype(np.float32), 0.6, deformed.astype(np.float32),0.4,0.0)
+            outpath = os.path.join(outdir, 'blend.png')
+            cv2.imwrite(outpath, blend)
+
+            sitk.WriteTransform(tx,   os.path.join(outdir, 'initTrans.tfm')  ) #wirte inital affine transform
+            # write_deform_field(tx, deformation_field,   '/'.join(out_path.split('/')[:-1]), fixedImage) #forwardfield
+            write_deform_field1(tx, outTx,   outdir, fixedImage) #forwardfield
 
 
+            psnr,rmse=ErrorMetrics(targetCanvas,deformed)
+            print('PSNR:', psnr,'RMSE:',rmse)
 
             '''inv_deformation_field = inverse_deformationfield(deformation_field)#fixedImage to movingImage #backwardfield
             sourceRGB = cv2.imread(fixed_path, cv2.IMREAD_COLOR)
@@ -560,7 +614,7 @@ if __name__ == '__main__':
 
 
 
-        elif choose =='1':
+        '''elif choose =='1':
             dir_path = input("Enter a dir path including IHC and HE directories:") or 'Z:/PUBLIC/lab_members/inyeop_jang/data/organized_datasets/sample/info'
             d={}
             for root, dir, fnames in os.walk(dir_path):
@@ -581,7 +635,10 @@ if __name__ == '__main__':
                 fixedIHC, movingHE = load_IHC_HE(fixed_path, moving_path)
 
                 outArray, deformation_field = non_rigid_registration(fixedIHC,movingHE)
-                write_deform_field(deformation_field,  prefix='/'.join(p['out_path'].split('/')[:-1]))
+                write_deform_field(deformation_field,  prefix='/'.join(p['out_path'].split('/')[:-1]))'''
 
 
 
+
+
+# %%
