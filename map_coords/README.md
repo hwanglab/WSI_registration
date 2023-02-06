@@ -3,5 +3,5 @@
 
 Full Command
 ```
-python --data_root_path DATA_DIRECTORY --save_path RESULT_DIRECTORY
+python map_coordinates.py --data_root_path DATA_DIRECTORY --save_path RESULT_DIRECTORY
 ```
