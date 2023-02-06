@@ -1,6 +1,6 @@
 # Registration of Whole Slide Images(WSIs)
 
-## Part1. Registraion between H&E and IHC Slides
+## Part1. Registration between H&E and IHC Slides
 
 ## Part2. Mapping coordinates of source and target sldies
 
