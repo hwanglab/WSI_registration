@@ -1,4 +1,5 @@
 # Registration of Whole Slide Images(WSIs)
+![Copy of Final_Manuscript_fig_1](https://github.com/hwanglab/WSI_registration/assets/52568892/5f5091bc-c762-4f42-aa00-c510e0529f60)
 
 ## Part1. Registration between H&E and IHC Slides
 
