@@ -23,7 +23,7 @@
 - **Visualizing Mapped Tiles**: To display the mapped tiles on a new canvas for reverse engineering, [refer to this example](https://github.com/hwanglab/WSI_registration/blob/main/draw_mapped_images_example.ipynb).
 
 ## License
-© This project is licensed under Apache License  Version 2.0 - see the [LICENSE](https://github.com/hwanglab/WSI_registration/blob/main/LICENSE) file for details
+© This project is licensed under Apache License  Version 2.0 - see the [LICENSE](https://github.com/hwanglab/WSI_registration/blob/main/LICENSE) file for details.
 
 ## Contact
 Reach out to the [Hwang Lab](https://www.hwanglab.org/).
