@@ -7,6 +7,7 @@
   - "1 for Dir or 0 for image path:" < you can run this code with multiple images (1) or single image (0) >
   - Enter a ref. image path: < target image path (e.g. H&E path), it should be a directory path containing reference images when you choose 1 above >
   - Enter a moving image path: < source image path (e.g. IHC path), it should be a directory path containing source images when you choose 1 above >
+  - Enter an output path: < registered image path, it should be a directory path containing output images when you choose 1 above >
   ### Inside code
   - prefix : output directory
   - fixed_path : target image path (e.g. H&E path)
