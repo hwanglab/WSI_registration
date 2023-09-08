@@ -29,5 +29,5 @@
 Reach out to the [Hwang Lab](https://www.hwanglab.org/).
 
 <div align="center">
-    <img src="https://github.com/hwanglab/HE_IHC_HN_analysis/assets/52568892/3327cda3-447e-4e7e-b8e0-7feaed44e2f4" alt="hwanglab_mayo" width="600"/>
+    <img src="https://github.com/hwanglab/WSI_registration/assets/52568892/48957936-acb0-4445-b7e9-9dd74e05d0ac" alt="hwanglab_mayo" width="600"/>
 </div>
