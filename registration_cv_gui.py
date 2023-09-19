@@ -125,7 +125,9 @@ transformed_img = cv2.warpPerspective(img1,
 # Save the output.
 cv2.imwrite('initTransformed_img1.png', transformed_img)
 cv2.imwrite("initTransformed_img2.png", img2)
-
+fs = cv2.FileStorage("affine.yaml",cv2.FILE_STORAGE_WRITE)
+fs.write("affine_matrix", homography)
+fs.release()
 
 
 frac =0
